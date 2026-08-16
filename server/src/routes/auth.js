@@ -185,6 +185,14 @@ router.get(
 /** GET /api/auth/google/callback — Google redirects here. */
 router.get(
   '/google/callback',
+  async (req, res, next) => {
+    try {
+      await connectDB();
+      next();
+    } catch (err) {
+      next(err);
+    }
+  },
   passport.authenticate('google', { session: false, failureRedirect: '/login' }),
   (req, res) => {
     // req.user is the User document returned by the Passport verify callback
