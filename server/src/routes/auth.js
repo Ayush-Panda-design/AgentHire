@@ -16,10 +16,11 @@ const SALT_ROUNDS = 12;
 
 /** Cookie options shared by both tokens. */
 function cookieOpts(maxAgeMs) {
+  const isProd = process.env.NODE_ENV === 'production';
   return {
     httpOnly: true,
-    secure: process.env.NODE_ENV === 'production',
-    sameSite: 'strict',
+    secure: isProd,
+    sameSite: isProd ? 'none' : 'lax',
     maxAge: maxAgeMs,
     path: '/',
   };
