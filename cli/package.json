@@ -1,0 +1,19 @@
+{
+  "name": "agenthire-cli",
+  "version": "1.0.0",
+  "description": "AgentHire CLI — connect a hired AI employee to a real local project folder.",
+  "type": "module",
+  "bin": {
+    "agenthire": "./bin/agenthire.js"
+  },
+  "scripts": {
+    "start": "node bin/agenthire.js"
+  },
+  "dependencies": {
+    "commander": "^12.1.0",
+    "diff": "^5.2.0"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
