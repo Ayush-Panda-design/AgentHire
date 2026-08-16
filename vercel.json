@@ -1,14 +1,8 @@
 {
-  "buildCommand": "cd client && npm run build",
-  "installCommand": "npm install --prefix client && npm install --prefix server",
+  "buildCommand": "cd client && npm install && npm run build",
+  "installCommand": "npm install",
   "outputDirectory": "client/dist",
-  "functions": {
-    "server/api/index.js": {
-      "includeFiles": "server/src/**"
-    }
-  },
   "rewrites": [
-    { "source": "/api/(.*)", "destination": "/server/api/index.js" },
     { "source": "/(.*)", "destination": "/index.html" }
   ]
 }
