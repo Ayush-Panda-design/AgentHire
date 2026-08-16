@@ -180,7 +180,7 @@ router.get('/me', requireAuth, async (req, res) => {
 /** GET /api/auth/google — starts the OAuth flow. */
 router.get(
   '/google',
-  passport.authenticate('google', { scope: ['profile', 'email'], session: false })
+  passport.authenticate('google', { scope: ['profile', 'email'], session: false, prompt: 'select_account' })
 );
 
 /** GET /api/auth/google/callback — Google redirects here. */
