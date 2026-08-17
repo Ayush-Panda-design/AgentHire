@@ -54,12 +54,33 @@ export default function Hero() {
           </div>
         </div>
 
-        <div className="workspace-panel">
-          <div className="glow" />
-          <div className="wp-header">
-            <span>AH-WORKSPACE · SES-82193</span>
-            <span className="live">LIVE</span>
+        <div style={{ position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'flex-end' }}>
+          {/* Hero Image */}
+          <div style={{
+            position: 'absolute',
+            top: '5%',
+            right: '-5%',
+            width: '90%',
+            height: '110%',
+            borderRadius: 'var(--radius-lg)',
+            overflow: 'hidden',
+            boxShadow: '0 24px 48px -12px rgba(0,0,0,0.3)',
+            zIndex: 1
+          }}>
+            <img 
+              src="https://images.unsplash.com/photo-1518770660439-4636190af475?w=1200&q=80&auto=format" 
+              alt="AI Technology Workspace" 
+              style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+            />
+            <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(to right, var(--bg) 0%, transparent 50%)' }} />
           </div>
+
+          <div className="workspace-panel" style={{ zIndex: 2, width: '90%', maxWidth: '420px', marginRight: '5%' }}>
+            <div className="glow" />
+            <div className="wp-header">
+              <span>AH-WORKSPACE · SES-82193</span>
+              <span className="live">LIVE</span>
+            </div>
 
           <div className="wp-body">
             <div className="review-card">
@@ -102,6 +123,7 @@ export default function Hero() {
               <div className="st-val green">18,420</div>
             </div>
           </div>
+        </div>
         </div>
       </div>
     </section>

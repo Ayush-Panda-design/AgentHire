@@ -45,9 +45,14 @@ export default function EmployeeCard() {
 
         <div className={`employee-card reveal reveal-delay-2 ${inView ? 'in-view' : ''}`}>
           <div className="ec-top">
-            <div>
-              <div className="ec-name">FullStack Pro AI</div>
-              <div className="ec-role">Software Development · 2.4 yrs experience</div>
+            <div style={{ display: 'flex', gap: '16px', alignItems: 'center' }}>
+              <div style={{ width: '48px', height: '48px', borderRadius: '50%', overflow: 'hidden', border: '1px solid var(--accent)' }}>
+                <img src="https://images.unsplash.com/photo-1620641788421-7a1c342ea42e?w=100&q=80&auto=format" alt="AI Avatar" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+              </div>
+              <div>
+                <div className="ec-name">FullStack Pro AI</div>
+                <div className="ec-role">Software Development · 2.4 yrs experience</div>
+              </div>
             </div>
             <div className="ec-price">₹200<span>per hour</span></div>
           </div>

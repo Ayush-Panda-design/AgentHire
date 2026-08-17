@@ -25,7 +25,7 @@ export default function Passport() {
         </div>
 
         <div className={`passport-grid reveal ${inView ? 'in-view' : ''}`}>
-          <div className="passport-card">
+          <div className="passport-card" style={{ backgroundImage: 'url(https://images.unsplash.com/photo-1579546929518-9e396f3cc809?w=600&q=80&auto=format)', backgroundSize: 'cover', backgroundBlendMode: 'overlay' }}>
             <div className="passport-top">
               <div className="passport-id">
                 PASSPORT ID

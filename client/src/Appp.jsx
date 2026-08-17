@@ -19,16 +19,11 @@ export default function App() {
       <Hero />
       <Marquee />
       <Problems />
-      <hr className="section-divider" />
       <HowItWorks />
-      <hr className="section-divider" />
       <CLIDemo />
       <Permissions />
-      <hr className="section-divider" />
       <EmployeeCard />
-      <hr className="section-divider" />
       <Passport />
-      <hr className="section-divider" />
       <HiringModels />
       <Certifications />
       <FinalCTA />

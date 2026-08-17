@@ -44,12 +44,15 @@ export default function Permissions() {
   return (
     <section className="tight" id="permissions">
       <div className="container">
-        <div className="section-head reveal" ref={ref}>
+        <div className="section-head reveal" ref={ref} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap' }}>
           <div>
             <div className="eyebrow"><span className="dot" />Permissions &amp; Security</div>
             <h2>You decide what<br />the AI can touch</h2>
+            <p style={{ marginTop: '16px' }}>Sensitive files — <code>.env</code>, keys, credentials — are detected automatically and blocked unless you say otherwise.</p>
           </div>
-          <p>Sensitive files — <code>.env</code>, keys, credentials — are detected automatically and blocked unless you say otherwise.</p>
+          <div style={{ flex: '0 0 auto', width: '300px', height: '200px', borderRadius: 'var(--radius-md)', overflow: 'hidden', boxShadow: '0 12px 24px -8px rgba(0,0,0,0.2)' }}>
+             <img src="https://images.unsplash.com/photo-1555949963-ff9fe0c870eb?w=600&q=80&auto=format" alt="Security concepts" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+          </div>
         </div>
 
         <div className={`perm-grid reveal ${inView ? 'in-view' : ''}`}>

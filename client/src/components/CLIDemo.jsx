@@ -26,8 +26,20 @@ export default function CLIDemo() {
   }, [inView])
 
   return (
-    <section id="cli">
-      <div className="container terminal-wrap">
+    <section id="cli" style={{ position: 'relative' }}>
+      {/* Background Image Overlay */}
+      <div style={{
+        position: 'absolute',
+        top: '10%',
+        bottom: '10%',
+        left: 0,
+        right: 0,
+        background: 'url(https://images.unsplash.com/photo-1555066931-4365d14bab8c?w=1600&q=80&auto=format) center/cover no-repeat',
+        opacity: 0.1,
+        pointerEvents: 'none',
+        zIndex: 0
+      }} />
+      <div className="container terminal-wrap" style={{ position: 'relative', zIndex: 1 }}>
         <div className={`terminal-copy reveal ${inView ? 'in-view' : ''}`} ref={ref}>
           <div className="eyebrow"><span className="dot" />The Agent CLI</div>
           <h2>Your project, connected —<br />nothing exposed by default</h2>
@@ -43,8 +55,8 @@ export default function CLIDemo() {
           </div>
         </div>
 
-        <div className="terminal reveal reveal-delay-2 in-view">
-          <div className="terminal-bar">
+        <div className="terminal reveal reveal-delay-2 in-view" style={{ background: 'rgba(20, 20, 20, 0.7)', backdropFilter: 'blur(16px)', WebkitBackdropFilter: 'blur(16px)', boxShadow: '0 24px 48px -12px rgba(0,0,0,0.4)', border: '1px solid var(--border-strong)' }}>
+          <div className="terminal-bar" style={{ background: 'rgba(255, 255, 255, 0.05)' }}>
             <span className="dot" /><span className="dot" /><span className="dot" />
             <span className="tb-title">zsh — rahul-project — agenthire</span>
           </div>

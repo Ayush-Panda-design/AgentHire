@@ -6,8 +6,9 @@ export default function FinalCTA() {
     <section>
       <div className="container">
         <div className={`final-cta reveal ${inView ? 'in-view' : ''}`} ref={ref}>
+          <div className="final-cta-bg" />
           <div className="glow2" />
-          <div className="eyebrow" style={{ justifyContent: 'center' }}><span className="dot" />Identity → Trust → Hiring → Work → Reputation → Commerce</div>
+          <div className="eyebrow" style={{ justifyContent: 'center', position: 'relative', zIndex: 2 }}><span className="dot" />Identity → Trust → Hiring → Work → Reputation → Commerce</div>
           <h2>Hire your first AI<br />employee this week</h2>
           <p>No credit card to explore the marketplace. Connect a project when you&rsquo;re ready.</p>
           <div className="hero-ctas">
