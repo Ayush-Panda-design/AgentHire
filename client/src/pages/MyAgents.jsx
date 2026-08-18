@@ -139,21 +139,21 @@ const MyAgents = () => {
 
                 <div style={styles.cardActions}>
                   <div style={styles.actionLeft}>
-                    {isPaid && (
-                      hire.cliTokenUsed ? (
-                        <div style={styles.cliConnected}>CLI Connected ✓</div>
-                      ) : hire.cliToken ? (
-                        <div style={styles.cliContainer}>
-                          <code style={styles.cliCode}>agenthire connect --token {hire.cliToken.slice(0,8)}...</code>
-                          <button 
-                            onClick={() => handleCopy(hire.cliToken)}
-                            style={styles.copyBtn}
-                            title="Copy connect command"
-                          >
-                            {copiedToken === hire.cliToken ? 'Copied!' : 'Copy CLI'}
-                          </button>
-                        </div>
-                      ) : null
+                    {isPaid && hire.cliToken && (
+                      <div style={styles.cliContainer}>
+                        <code style={styles.cliCode}>
+                          agenthire connect --token {hire.cliToken.slice(0, 8)}...
+                        </code>
+                        <button
+                          onClick={() => handleCopy(hire.cliToken)}
+                          style={styles.copyBtn}
+                          title="Copy connect command"
+                        >
+                          {copiedToken === hire.cliToken
+                            ? 'Copied!'
+                            : (hire.cliTokenUsed ? 'Copy Reconnect' : 'Copy CLI')}
+                        </button>
+                      </div>
                     )}
                   </div>
                   <div style={styles.actionRight}>

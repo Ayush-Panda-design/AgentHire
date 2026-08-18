@@ -15,12 +15,26 @@ const useAuthStore = create((set) => ({
   isLoading: true,
 
   /** Ask the backend who the current cookie-authenticated user is. */
-  fetchMe: async () => {
-    set({ isLoading: true })
+  fetchMe: async ({ silent = false } = {}) => {
+    if (!silent) set({ isLoading: true })
     try {
-      const res = await fetch(`${API_URL}/auth/me`, {
+      let res = await fetch(`${API_URL}/auth/me`, {
         credentials: 'include',
       })
+
+      // Access token expired but refresh cookie may still be valid
+      if (res.status === 401) {
+        const refreshRes = await fetch(`${API_URL}/auth/refresh`, {
+          method: 'POST',
+          credentials: 'include',
+        })
+        if (refreshRes.ok) {
+          res = await fetch(`${API_URL}/auth/me`, {
+            credentials: 'include',
+          })
+        }
+      }
+
       if (!res.ok) {
         set({ user: null, isLoading: false })
         return

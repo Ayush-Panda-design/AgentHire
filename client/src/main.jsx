@@ -6,6 +6,7 @@ import App from './Appp.jsx'
 import Login from './pages/Login.jsx'
 import Register from './pages/Register.jsx'
 import RequireAuth from './components/RequireAuth.jsx'
+import AuthBootstrap from './components/AuthBootstrap.jsx'
 import AppShell from './pages/AppShell.jsx'
 import Marketplace from './pages/Marketplace.jsx'
 import EmployeeProfile from './pages/EmployeeProfile.jsx'
@@ -23,6 +24,7 @@ ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>
     <QueryClientProvider client={queryClient}>
       <BrowserRouter>
+        <AuthBootstrap>
         <Routes>
           {/* Public routes */}
           <Route path="/" element={<App />} />
@@ -44,6 +46,7 @@ ReactDOM.createRoot(document.getElementById('root')).render(
             </Route>
           </Route>
         </Routes>
+        </AuthBootstrap>
       </BrowserRouter>
     </QueryClientProvider>
   </React.StrictMode>,

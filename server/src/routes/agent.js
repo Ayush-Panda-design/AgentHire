@@ -3,15 +3,47 @@ import { GoogleGenerativeAI, SchemaType } from '@google/generative-ai';
 import AIEmployee from '../models/AIEmployee.js';
 import { requireCliAuth } from '../middleware/requireCliAuth.js';
 import { connectDB } from '../config/db.js';
+import {
+  getAvailableGeminiKeys,
+  hasGeminiApiKeys,
+  isQuotaError,
+  markGeminiKeyExhausted,
+  maskApiKey,
+} from '../config/geminiKeys.js';
 
 const router = Router();
 
-// Current stable Flash model as of August 2026 (GA'd July 21, 2026).
-// If this is ever deprecated, check https://ai.google.dev/gemini-api/docs/models
-// for the latest stable ID and swap it in here.
-const GEMINI_MODEL = 'gemini-3.6-flash';
+// Primary model + fallbacks when one is overloaded (503/429).
+// Override with GEMINI_MODEL in server/.env — see https://ai.google.dev/gemini-api/docs/models
+const GEMINI_MODEL_FALLBACKS = [
+  process.env.GEMINI_MODEL,
+  'gemini-2.5-flash',
+  'gemini-2.5-flash-lite',
+  'gemini-2.0-flash',
+].filter(Boolean);
 
+const MAX_RETRIES_PER_MODEL = 3;
 const MAX_FILE_CHARS = 20000; // small per-file size cap for the demo
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function isRetryableGeminiError(err) {
+  const msg = String(err?.message || err).toLowerCase();
+  return (
+    msg.includes('503')
+    || msg.includes('429')
+    || msg.includes('high demand')
+    || msg.includes('unavailable')
+    || msg.includes('overloaded')
+    || msg.includes('resource exhausted')
+  );
+}
+
+function getModelChain() {
+  return [...new Set(GEMINI_MODEL_FALLBACKS)];
+}
 
 const toolDeclarations = [
   {
@@ -44,10 +76,10 @@ const toolDeclarations = [
   },
 ];
 
-function buildModel(employee) {
-  const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+function buildModel(employee, modelName, apiKey) {
+  const genAI = new GoogleGenerativeAI(apiKey);
   return genAI.getGenerativeModel({
-    model: GEMINI_MODEL,
+    model: modelName,
     systemInstruction:
       `You are ${employee.roleTitle}, an AI software engineer working for AgentHire. ` +
       `You have been given the contents of a real local project directory belonging to a client. ` +
@@ -61,6 +93,45 @@ function buildModel(employee) {
   });
 }
 
+async function generateWithRetry(employee, contents) {
+  const models = getModelChain();
+  let lastError;
+
+  for (const modelName of models) {
+    for (const apiKey of getAvailableGeminiKeys()) {
+      for (let attempt = 0; attempt < MAX_RETRIES_PER_MODEL; attempt++) {
+        try {
+          const model = buildModel(employee, modelName, apiKey);
+          const result = await model.generateContent({ contents });
+          return { result, modelUsed: modelName };
+        } catch (err) {
+          lastError = err;
+
+          if (isQuotaError(err)) {
+            markGeminiKeyExhausted(apiKey);
+            console.warn(
+              `agent: key ${maskApiKey(apiKey)} quota exceeded — trying next key…`,
+            );
+            break;
+          }
+
+          if (!isRetryableGeminiError(err)) throw err;
+
+          const delay = Math.min(1000 * 2 ** attempt, 8000);
+          console.warn(
+            `agent: ${modelName} busy with key ${maskApiKey(apiKey)} `
+            + `(attempt ${attempt + 1}/${MAX_RETRIES_PER_MODEL}), retry in ${delay}ms…`,
+          );
+          await sleep(delay);
+        }
+      }
+    }
+    console.warn(`agent: ${modelName} unavailable — trying next model…`);
+  }
+
+  throw lastError;
+}
+
 // ---------------------------------------------------------------------------
 // POST /api/agent/run
 //
@@ -71,7 +142,7 @@ function buildModel(employee) {
 // ---------------------------------------------------------------------------
 router.post('/run', requireCliAuth, async (req, res) => {
   try {
-    if (!process.env.GEMINI_API_KEY) {
+    if (!hasGeminiApiKeys()) {
       return res.status(500).json({ error: 'GEMINI_API_KEY is not configured on the server' });
     }
 
@@ -86,8 +157,6 @@ router.post('/run', requireCliAuth, async (req, res) => {
     if (!employee) {
       return res.status(404).json({ error: 'Employee not found for this hire' });
     }
-
-    const model = buildModel(employee);
 
     let contents;
     const changedSoFar = Array.isArray(filesChangedSoFar) ? [...filesChangedSoFar] : [];
@@ -133,7 +202,7 @@ router.post('/run', requireCliAuth, async (req, res) => {
       ];
     }
 
-    const result = await model.generateContent({ contents });
+    const { result, modelUsed } = await generateWithRetry(employee, contents);
     const response = result.response;
 
     const functionCalls = typeof response.functionCalls === 'function' ? response.functionCalls() : null;
@@ -149,6 +218,7 @@ router.post('/run', requireCliAuth, async (req, res) => {
         toolCalls: functionCalls.map((fc) => ({ name: fc.name, args: fc.args })),
         history: updatedHistory,
         filesChangedSoFar: changedSoFar,
+        modelUsed,
       });
     }
 
@@ -166,6 +236,7 @@ router.post('/run', requireCliAuth, async (req, res) => {
       done: true,
       message,
       filesChangedSoFar: changedSoFar,
+      modelUsed,
     });
   } catch (err) {
     console.error('agent run error:', err);

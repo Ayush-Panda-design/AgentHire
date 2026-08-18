@@ -1,5 +1,6 @@
 import 'dotenv/config';
 import app from './app.js';
+import { hasGeminiApiKeys } from './config/geminiKeys.js';
 
 // ── Startup validation ────────────────────────────────────────────────────────
 const REQUIRED = ['MONGO_URI', 'JWT_ACCESS_SECRET', 'JWT_REFRESH_SECRET'];
@@ -16,7 +17,7 @@ if (missing.length > 0) {
 if (!process.env.RAZORPAY_KEY_ID || !process.env.RAZORPAY_KEY_SECRET) {
   console.warn('⚠️  Razorpay keys not set — payment routes will error until you add them to server/.env');
 }
-if (!process.env.GEMINI_API_KEY) {
+if (!hasGeminiApiKeys()) {
   console.warn('⚠️  GEMINI_API_KEY not set — agent route will error until you add it to server/.env');
 }
 

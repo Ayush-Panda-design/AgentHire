@@ -6,7 +6,7 @@
  *   agenthire connect --token <cliToken>
  *
  * Run from inside the project folder you want the AI agent to work on.
- * Calls the AgentHire server, authenticates via the single-use CLI token
+ * Calls the AgentHire server, authenticates via the CLI token from your hire,
  * minted after a Razorpay payment, then drops into a readline REPL.
  * Each instruction is sent to the server's Gemini-powered agent endpoint;
  * write_file tool calls are applied to the real local filesystem.
@@ -49,8 +49,9 @@ function isDenied(filePath) {
 // ---------------------------------------------------------------------------
 const MAX_FILE_BYTES = 50_000; // 50 KB per file — keep payloads sane for demo
 const MAX_FILES = 30;
+const MAX_FILES_DEFAULT = 12; // cap when no specific file is mentioned — faster API calls
 
-function collectFiles(dir) {
+function collectFiles(dir, cwd = process.cwd()) {
   const results = [];
   let entries;
   try {
@@ -65,11 +66,11 @@ function collectFiles(dir) {
     if (entry.name === 'node_modules') continue;
 
     const fullPath = path.join(dir, entry.name);
-    const relPath = path.relative(process.cwd(), fullPath).replace(/\\/g, '/');
+    const relPath = path.relative(cwd, fullPath).replace(/\\/g, '/');
 
     if (entry.isDirectory()) {
       // One level of recursion for src/ subdirectories
-      const sub = collectFiles(fullPath);
+      const sub = collectFiles(fullPath, cwd);
       results.push(...sub.slice(0, MAX_FILES - results.length));
     } else if (entry.isFile()) {
       if (isDenied(relPath)) continue;
@@ -84,6 +85,29 @@ function collectFiles(dir) {
     }
   }
   return results;
+}
+
+// Send only files relevant to the instruction when possible — much faster for
+// targeted edits like "add text to readme.md".
+function selectFilesForTask(instruction, allFiles) {
+  const lower = instruction.toLowerCase();
+
+  const matched = allFiles.filter((f) => {
+    const base = path.basename(f.path).toLowerCase();
+    const rel = f.path.toLowerCase();
+    return lower.includes(base) || lower.includes(rel);
+  });
+
+  if (matched.length > 0) {
+    return matched;
+  }
+
+  if (/readme/i.test(instruction)) {
+    const readme = allFiles.find((f) => /readme(\.md)?$/i.test(f.path));
+    if (readme) return [readme];
+  }
+
+  return allFiles.slice(0, MAX_FILES_DEFAULT);
 }
 
 // ---------------------------------------------------------------------------
@@ -131,10 +155,13 @@ async function apiFetch(path, opts = {}) {
 // ---------------------------------------------------------------------------
 async function runAgentLoop(instruction, sessionToken, rl) {
   const cwd = process.cwd();
-  const files = collectFiles(cwd);
+  const allFiles = collectFiles(cwd);
+  const files = selectFilesForTask(instruction, allFiles);
 
   if (files.length === 0) {
     console.log('  (No files found in current directory — the agent will work blind.)');
+  } else if (files.length < allFiles.length) {
+    console.log(`  Using ${files.length} relevant file(s) (${allFiles.length} total in project) …`);
   } else {
     console.log(`  Reading ${files.length} file(s) from ${cwd} …`);
   }
@@ -153,7 +180,7 @@ async function runAgentLoop(instruction, sessionToken, rl) {
       ...(history ? { history, toolResults, filesChangedSoFar } : { files }),
     };
 
-    console.log(`  Thinking${rounds > 1 ? ` (round ${rounds})` : ''}…`);
+    console.log(`  Thinking${rounds > 1 ? ` (round ${rounds})` : ''}… (may retry if Gemini is busy)`);
     const { ok, body } = await apiFetch('/agent/run', {
       method: 'POST',
       headers: { Authorization: `Bearer ${sessionToken}` },
@@ -162,8 +189,17 @@ async function runAgentLoop(instruction, sessionToken, rl) {
 
     if (!ok) {
       console.error(`\n  ✗ Agent error: ${body.error || 'Unknown error'}`);
-      if (body.detail) console.error(`    ${body.detail}`);
+      if (body.detail) {
+        console.error(`    ${body.detail}`);
+        if (String(body.detail).includes('503') || String(body.detail).includes('high demand')) {
+          console.error('    Tip: wait a few seconds and try again, or set GEMINI_MODEL=gemini-2.5-flash in server/.env');
+        }
+      }
       return;
+    }
+
+    if (body.modelUsed) {
+      console.log(`  ✓ Model: ${body.modelUsed}`);
     }
 
     if (body.done) {
@@ -245,12 +281,12 @@ async function runAgentLoop(instruction, sessionToken, rl) {
         }
 
       } else if (name === 'list_files') {
-        const list = files.map((f) => f.path).join('\n');
+        const list = allFiles.map((f) => f.path).join('\n');
         toolResults.push({ name, args, result: list || '(empty)' });
 
       } else if (name === 'read_file') {
         const relPath = (args.path || '').replace(/\\/g, '/');
-        const f = files.find((x) => x.path === relPath);
+        const f = allFiles.find((x) => x.path === relPath);
         toolResults.push({ name, args, result: f ? f.content : `File not found: ${relPath}` });
 
       } else {
@@ -273,7 +309,7 @@ program
 program
   .command('connect')
   .description('Activate a hired AI employee and start an interactive REPL in the current folder')
-  .requiredOption('--token <cliToken>', 'Single-use CLI token from the AgentHire payment success page')
+  .requiredOption('--token <cliToken>', 'CLI token from the AgentHire payment success page or My Agents')
   .action(async (opts) => {
     console.log('\n  AgentHire CLI  •  Connecting…\n');
 
@@ -285,8 +321,10 @@ program
 
     if (!ok) {
       console.error(`  ✗ Activation failed: ${body.error || 'Unknown error'}`);
-      console.error('  Make sure your token is valid, unused, and that the server is running.\n');
-      process.exit(1);
+      if (body.hint) console.error(`  ${body.hint}`);
+      console.error('  Make sure your token is valid and payment completed. Copy it from My Agents on the website.\n');
+      process.exitCode = 1;
+      return;
     }
 
     const sessionToken = body.token;

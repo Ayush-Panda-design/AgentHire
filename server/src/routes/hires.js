@@ -27,8 +27,8 @@ router.get('/', requireAuth, async (req, res) => {
 // ---------------------------------------------------------------------------
 // POST /api/hires/activate
 // body: { cliToken }
-// Called by `agenthire connect --token <cliToken>`. Single-use: the token is
-// burned on first successful activation.
+// Called by `agenthire connect --token <cliToken>`. Issues a short-lived CLI
+// session JWT. The same token can be reused to reconnect after closing the CLI.
 // ---------------------------------------------------------------------------
 router.post('/activate', async (req, res) => {
   try {
@@ -39,9 +39,12 @@ router.post('/activate', async (req, res) => {
       return res.status(400).json({ error: 'cliToken is required' });
     }
 
-    const hire = await Hire.findOne({ cliToken, status: 'paid', cliTokenUsed: false });
+    const hire = await Hire.findOne({ cliToken, status: 'paid' });
     if (!hire) {
-      return res.status(401).json({ error: 'Invalid, already-used, or unpaid token' });
+      return res.status(401).json({
+        error: 'Invalid or unpaid token',
+        hint: 'Check the token from My Agents on the website, or complete payment first.',
+      });
     }
 
     const employee = await AIEmployee.findById(hire.employee);
@@ -49,8 +52,10 @@ router.post('/activate', async (req, res) => {
       return res.status(404).json({ error: 'Employee not found for this hire' });
     }
 
-    hire.cliTokenUsed = true;
-    await hire.save();
+    if (!hire.cliTokenUsed) {
+      hire.cliTokenUsed = true;
+      await hire.save();
+    }
 
     const sessionToken = jwt.sign(
       { sub: hire.buyer.toString(), hireId: hire._id.toString(), type: 'cli-session' },
