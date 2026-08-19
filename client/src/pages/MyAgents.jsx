@@ -2,6 +2,8 @@ import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 
+import { buildCliConnectOneLiner } from '../utils/cliConnect.js'
+
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
 
 const MyAgents = () => {
@@ -19,7 +21,7 @@ const MyAgents = () => {
   });
 
   const handleCopy = (token) => {
-    const cmd = `agenthire connect --token ${token}`;
+    const cmd = buildCliConnectOneLiner(token);
     navigator.clipboard.writeText(cmd);
     setCopiedToken(token);
     setTimeout(() => setCopiedToken(null), 2000);
@@ -142,7 +144,7 @@ const MyAgents = () => {
                     {isPaid && hire.cliToken && (
                       <div style={styles.cliContainer}>
                         <code style={styles.cliCode}>
-                          agenthire connect --token {hire.cliToken.slice(0, 8)}...
+                          {hire.cliToken.slice(0, 12)}…{hire.cliToken.slice(-6)} ({hire.cliToken.length} chars)
                         </code>
                         <button
                           onClick={() => handleCopy(hire.cliToken)}

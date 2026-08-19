@@ -182,7 +182,8 @@ export default function Workspace() {
           <div style={{ marginBottom: '20px', padding: '14px', background: 'var(--bg-panel)', border: '1px solid var(--border-soft)', borderRadius: 'var(--radius-md)' }}>
             <div style={{ fontSize: '12px', color: 'var(--text-dim)', marginBottom: '8px' }}>1. Install the CLI</div>
             <code style={{ fontFamily: 'var(--mono)', fontSize: '11px', color: 'var(--accent)', display: 'block', wordBreak: 'break-all' }}>
-              npm install -g agenthire-cli
+              cd path/to/agenthire-demo-v2/cli{'\n'}
+              npm install && npm install -g .
             </code>
           </div>
 

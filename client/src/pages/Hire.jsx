@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { buildCliConnectCommands } from '../utils/cliConnect.js'
 import { useParams, Link } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 
@@ -197,7 +198,7 @@ export default function Hire() {
 
   // ── Success screen ──────────────────────────────────────────────────────────
   if (step === 3) {
-    const connectCmd = `npx agenthire-cli connect --token ${cliToken}`
+    const connectCmd = buildCliConnectCommands(cliToken)
     return (
       <div style={{ padding: '80px 40px', maxWidth: '680px', margin: '0 auto', textAlign: 'center' }}>
         <div style={{ fontSize: '48px', marginBottom: '20px' }}>🎉</div>
@@ -211,7 +212,7 @@ export default function Hire() {
         <div style={{ background: 'var(--bg-raised)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', padding: '28px', marginBottom: '32px', textAlign: 'left' }}>
           <div style={{ fontSize: '12px', fontFamily: 'var(--mono)', color: 'var(--text-faint)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '12px' }}>Run this in your project folder</div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px', background: 'var(--bg-panel)', border: '1px solid var(--border-soft)', borderRadius: 'var(--radius-md)', padding: '14px 18px' }}>
-            <code style={{ fontFamily: 'var(--mono)', fontSize: '13px', color: 'var(--accent)', flex: 1, wordBreak: 'break-all' }}>
+            <code style={{ fontFamily: 'var(--mono)', fontSize: '13px', color: 'var(--accent)', flex: 1, wordBreak: 'break-all', whiteSpace: 'pre-wrap' }}>
               {connectCmd}
             </code>
             <button onClick={() => handleCopy(connectCmd)}

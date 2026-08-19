@@ -99,12 +99,18 @@ function selectFilesForTask(instruction, allFiles) {
   });
 
   if (matched.length > 0) {
-    return matched;
+    const related = allFiles.filter((f) => /\.css$/i.test(f.path) || /\.html?$/i.test(f.path));
+    return [...new Map([...matched, ...related].map((f) => [f.path, f])).values()];
   }
 
   if (/readme/i.test(instruction)) {
     const readme = allFiles.find((f) => /readme(\.md)?$/i.test(f.path));
     if (readme) return [readme];
+  }
+
+  if (/font|style|css|color|text|design|size|large|larger|small|smaller|heading|typography/i.test(instruction)) {
+    const relevant = allFiles.filter((f) => /\.css$/i.test(f.path) || /\.html?$/i.test(f.path));
+    if (relevant.length > 0) return relevant;
   }
 
   return allFiles.slice(0, MAX_FILES_DEFAULT);
@@ -153,10 +159,15 @@ async function apiFetch(path, opts = {}) {
 // ---------------------------------------------------------------------------
 // Main agent loop
 // ---------------------------------------------------------------------------
-async function runAgentLoop(instruction, sessionToken, rl) {
+async function runAgentLoop(instruction, sessionToken, rl, sessionTurns = []) {
   const cwd = process.cwd();
   const allFiles = collectFiles(cwd);
   const files = selectFilesForTask(instruction, allFiles);
+
+  const contextPrefix = sessionTurns.length > 0
+    ? `Previous messages in this CLI session:\n${sessionTurns.map((t) => `- User: ${t.instruction}\n  Agent: ${t.reply}`).join('\n')}\n\nCurrent request: `
+    : '';
+  const fullInstruction = contextPrefix + instruction;
 
   if (files.length === 0) {
     console.log('  (No files found in current directory — the agent will work blind.)');
@@ -170,13 +181,13 @@ async function runAgentLoop(instruction, sessionToken, rl) {
   let toolResults = null;
   let filesChangedSoFar = [];
   let rounds = 0;
-  const MAX_ROUNDS = 3;
+  const MAX_ROUNDS = 5;
 
   while (rounds < MAX_ROUNDS) {
     rounds++;
 
     const payload = {
-      instruction,
+      instruction: fullInstruction,
       ...(history ? { history, toolResults, filesChangedSoFar } : { files }),
     };
 
@@ -203,11 +214,18 @@ async function runAgentLoop(instruction, sessionToken, rl) {
     }
 
     if (body.done) {
+      const reply = (body.message || '').trim()
+        || (body.filesChangedSoFar?.length
+          ? `Updated ${body.filesChangedSoFar.join(', ')}.`
+          : '(No response text — try being more specific, e.g. "set body font-size to 16px in style.css")');
+
+      sessionTurns.push({ instruction, reply });
+
       // Final summary from the model
       console.log('\n' + '─'.repeat(60));
       console.log('  ✓ Agent response:');
       console.log('─'.repeat(60));
-      console.log(body.message.trim().split('\n').map((l) => `  ${l}`).join('\n'));
+      console.log(reply.split('\n').map((l) => `  ${l}`).join('\n'));
       if (body.filesChangedSoFar?.length) {
         console.log('\n  Files written: ' + body.filesChangedSoFar.join(', '));
       }
@@ -311,12 +329,21 @@ program
   .description('Activate a hired AI employee and start an interactive REPL in the current folder')
   .requiredOption('--token <cliToken>', 'CLI token from the AgentHire payment success page or My Agents')
   .action(async (opts) => {
+    const token = String(opts.token || '').trim();
+
+    if (token.length < 40) {
+      console.error('\n  ✗ Token looks truncated (expected 48 characters).');
+      console.error('  Use the Copy button on My Agents — do not type the token manually.\n');
+      process.exitCode = 1;
+      return;
+    }
+
     console.log('\n  AgentHire CLI  •  Connecting…\n');
 
     // Step 1: Activate the CLI token → get a short-lived session JWT
     const { ok, body } = await apiFetch('/hires/activate', {
       method: 'POST',
-      body: JSON.stringify({ cliToken: opts.token }),
+      body: JSON.stringify({ cliToken: token }),
     });
 
     if (!ok) {
@@ -342,6 +369,8 @@ program
       terminal: true,
     });
 
+    const sessionTurns = [];
+
     const ask = () => {
       rl.question(`  [${employee.name}] > `, async (raw) => {
         const instruction = raw.trim();
@@ -356,7 +385,7 @@ program
         }
 
         try {
-          await runAgentLoop(instruction, sessionToken, rl);
+          await runAgentLoop(instruction, sessionToken, rl, sessionTurns);
         } catch (err) {
           console.error(`\n  ✗ Unexpected error: ${err.message}\n`);
         }

@@ -33,7 +33,7 @@ export default function CLI() {
               Install the AgentHire CLI globally via npm to securely connect any local directory to an active AI hire session.
             </p>
             <div style={{ background: 'var(--bg-panel)', padding: '12px 16px', borderRadius: 'var(--radius-md)', fontFamily: 'var(--mono)', fontSize: '13px', color: 'var(--text)', border: '1px solid var(--border)', marginTop: '16px', display: 'flex', justifyContent: 'space-between' }}>
-              <span>npm install -g agenthire-cli</span>
+              <span>cd agenthire-demo-v2/cli && npm install -g .</span>
               <span style={{ cursor: 'pointer', color: 'var(--text-faint)' }}>Copy</span>
             </div>
           </div>

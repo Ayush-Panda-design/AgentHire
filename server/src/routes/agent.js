@@ -13,8 +13,6 @@ import {
 
 const router = Router();
 
-// Primary model + fallbacks when one is overloaded (503/429).
-// Override with GEMINI_MODEL in server/.env — see https://ai.google.dev/gemini-api/docs/models
 const GEMINI_MODEL_FALLBACKS = [
   process.env.GEMINI_MODEL,
   'gemini-2.5-flash',
@@ -23,7 +21,8 @@ const GEMINI_MODEL_FALLBACKS = [
 ].filter(Boolean);
 
 const MAX_RETRIES_PER_MODEL = 3;
-const MAX_FILE_CHARS = 20000; // small per-file size cap for the demo
+const MAX_FILE_CHARS = 20000;
+const GENERATION_CONFIG = { maxOutputTokens: 8192, temperature: 0.2 };
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -45,51 +44,116 @@ function getModelChain() {
   return [...new Set(GEMINI_MODEL_FALLBACKS)];
 }
 
-const toolDeclarations = [
-  {
-    name: 'list_files',
-    description: 'List the files available in the current project directory.',
-    parameters: { type: SchemaType.OBJECT, properties: {} },
-  },
-  {
-    name: 'read_file',
-    description: 'Read the full contents of a file by path. Not usually needed since file contents are pre-loaded, but available for completeness.',
-    parameters: {
-      type: SchemaType.OBJECT,
-      properties: {
-        path: { type: SchemaType.STRING, description: 'Relative file path' },
-      },
-      required: ['path'],
+const writeFileTool = {
+  name: 'write_file',
+  description: 'Write the complete new contents of a file. Always pass the FULL file content, not a diff.',
+  parameters: {
+    type: SchemaType.OBJECT,
+    properties: {
+      path: { type: SchemaType.STRING, description: 'Relative file path to write' },
+      content: { type: SchemaType.STRING, description: 'The complete new file content' },
     },
+    required: ['path', 'content'],
   },
-  {
-    name: 'write_file',
-    description: 'Write the complete new contents of a file. Always pass the FULL file content, not a diff or partial snippet.',
-    parameters: {
-      type: SchemaType.OBJECT,
-      properties: {
-        path: { type: SchemaType.STRING, description: 'Relative file path to write' },
-        content: { type: SchemaType.STRING, description: 'The complete new file content' },
-      },
-      required: ['path', 'content'],
-    },
-  },
-];
+};
 
-function buildModel(employee, modelName, apiKey) {
+function extractFunctionCalls(response) {
+  if (typeof response.functionCalls === 'function') {
+    const calls = response.functionCalls();
+    if (calls?.length) {
+      return calls.map((fc) => ({ name: fc.name, args: fc.args || {} }));
+    }
+  }
+
+  const parts = response.candidates?.[0]?.content?.parts || [];
+  return parts
+    .filter((part) => part.functionCall)
+    .map((part) => ({
+      name: part.functionCall.name,
+      args: part.functionCall.args || {},
+    }));
+}
+
+function extractResponseText(response) {
+  try {
+    const text = response.text?.();
+    if (text?.trim()) return text.trim();
+  } catch {
+    // no text part — expected when the model only returns tool calls
+  }
+
+  const parts = response.candidates?.[0]?.content?.parts || [];
+  return parts
+    .filter((part) => typeof part.text === 'string' && !part.thought)
+    .map((part) => part.text)
+    .join('')
+    .trim();
+}
+
+function parseFileEditsFromText(text) {
+  if (!text?.trim()) return [];
+
+  const edits = [];
+  const blockRe = /FILE:\s*([^\n\r]+)\s*\r?\n```[^\n]*\r?\n([\s\S]*?)```/gi;
+  let match = blockRe.exec(text);
+  while (match) {
+    edits.push({
+      path: match[1].trim().replace(/^\.\//, ''),
+      content: match[2].replace(/\s+$/, ''),
+    });
+    match = blockRe.exec(text);
+  }
+  return edits;
+}
+
+function parseSummaryFromText(text) {
+  const match = text.match(/SUMMARY:\s*(.+)/is);
+  return match ? match[1].trim() : '';
+}
+
+function normalizeWriteCalls(calls) {
+  return calls
+    .filter((fc) => fc.name === 'write_file')
+    .map((fc) => ({
+      name: 'write_file',
+      args: {
+        path: String(fc.args?.path || '').replace(/^\.\//, ''),
+        content: String(fc.args?.content ?? ''),
+      },
+    }))
+    .filter((fc) => fc.args.path && fc.args.content);
+}
+
+function buildToolModel(employee, modelName, apiKey) {
   const genAI = new GoogleGenerativeAI(apiKey);
   return genAI.getGenerativeModel({
     model: modelName,
+    generationConfig: GENERATION_CONFIG,
     systemInstruction:
       `You are ${employee.roleTitle}, an AI software engineer working for AgentHire. ` +
-      `You have been given the contents of a real local project directory belonging to a client. ` +
-      `The client will give you a task in plain English. ` +
-      `CRITICAL: If the client is just saying hello, asking a general question, or gives a vague instruction like "fix this" without context, DO NOT call any tools. Reply directly in plain text asking for clarification. ` +
-      `If the client gives a specific coding task, decide which file(s) need to change and call ` +
-      `the write_file function with the COMPLETE new content of each file you change (never a partial diff). ` +
-      `Keep changes minimal and scoped to the task. When you are done, reply with a short plain-text summary ` +
-      `of what you changed and why (no further function calls).`,
-    tools: [{ functionDeclarations: toolDeclarations }],
+      `Project files are provided in the user message. ` +
+      `For coding/styling tasks (CSS, HTML, JS changes), you MUST call write_file with the COMPLETE updated file content. ` +
+      `Do not reply with only text when a file edit is requested — call write_file first. ` +
+      `For greetings with no task, reply briefly without tools.`,
+    tools: [{ functionDeclarations: [writeFileTool] }],
+  });
+}
+
+function buildTextEditModel(employee, modelName, apiKey) {
+  const genAI = new GoogleGenerativeAI(apiKey);
+  return genAI.getGenerativeModel({
+    model: modelName,
+    generationConfig: GENERATION_CONFIG,
+    systemInstruction:
+      `You are ${employee.roleTitle}, an AI software engineer working for AgentHire. ` +
+      `When a file must change, respond ONLY using this format:\n\n` +
+      `FILE: relative/path.ext\n` +
+      '```\n' +
+      '(complete new file content)\n' +
+      '```\n\n' +
+      `SUMMARY: one sentence describing the change\n\n` +
+      `For greetings or questions with no edits, respond with only:\n` +
+      `SUMMARY: your reply`,
   });
 }
 
@@ -101,17 +165,15 @@ async function generateWithRetry(employee, contents) {
     for (const apiKey of getAvailableGeminiKeys()) {
       for (let attempt = 0; attempt < MAX_RETRIES_PER_MODEL; attempt++) {
         try {
-          const model = buildModel(employee, modelName, apiKey);
+          const model = buildToolModel(employee, modelName, apiKey);
           const result = await model.generateContent({ contents });
-          return { result, modelUsed: modelName };
+          return { result, modelUsed: modelName, apiKey };
         } catch (err) {
           lastError = err;
 
           if (isQuotaError(err)) {
             markGeminiKeyExhausted(apiKey);
-            console.warn(
-              `agent: key ${maskApiKey(apiKey)} quota exceeded — trying next key…`,
-            );
+            console.warn(`agent: key ${maskApiKey(apiKey)} quota exceeded — trying next key…`);
             break;
           }
 
@@ -132,14 +194,59 @@ async function generateWithRetry(employee, contents) {
   throw lastError;
 }
 
-// ---------------------------------------------------------------------------
-// POST /api/agent/run
-//
-// First call:      { instruction, files: [{ path, content }] }
-// Continuation:     { instruction, history, toolResults: [{ name, args, result }], filesChangedSoFar }
-//
-// Response:         { done, message?, toolCalls?, history, filesChangedSoFar }
-// ---------------------------------------------------------------------------
+async function generateTextEditsFallback(employee, contents, modelName, apiKey) {
+  const model = buildTextEditModel(employee, modelName, apiKey);
+  const fallbackContents = [
+    ...contents,
+    {
+      role: 'user',
+      parts: [{
+        text: 'Apply the client task now. Output every changed file using the FILE:/```/SUMMARY: format.',
+      }],
+    },
+  ];
+  const result = await model.generateContent({ contents: fallbackContents });
+  const text = extractResponseText(result.response);
+  return {
+    text,
+    edits: parseFileEditsFromText(text),
+    summary: parseSummaryFromText(text),
+  };
+}
+
+async function resolveAgentTurn(employee, contents) {
+  const { result, modelUsed, apiKey } = await generateWithRetry(employee, contents);
+  const response = result.response;
+
+  let functionCalls = normalizeWriteCalls(extractFunctionCalls(response));
+  let message = extractResponseText(response);
+  let modelParts = response.candidates?.[0]?.content?.parts;
+
+  if (functionCalls.length === 0 && !message) {
+    console.warn(`agent: empty tool response from ${modelUsed}, trying text-edit fallback…`);
+    const fallback = await generateTextEditsFallback(employee, contents, modelUsed, apiKey);
+    if (fallback.edits.length > 0) {
+      functionCalls = fallback.edits.map((edit) => ({
+        name: 'write_file',
+        args: { path: edit.path, content: edit.content },
+      }));
+      message = fallback.summary;
+      modelParts = [{ text: fallback.text }];
+    } else {
+      message = fallback.summary || fallback.text || '';
+      modelParts = [{ text: message }];
+    }
+  }
+
+  if (!modelParts?.length) {
+    modelParts = functionCalls.length > 0
+      ? functionCalls.map((fc) => ({ functionCall: { name: fc.name, args: fc.args } }))
+      : [{ text: message || '' }];
+  }
+
+  return { functionCalls, message, modelParts, modelUsed };
+}
+
 router.post('/run', requireCliAuth, async (req, res) => {
   try {
     if (!hasGeminiApiKeys()) {
@@ -162,8 +269,6 @@ router.post('/run', requireCliAuth, async (req, res) => {
     const changedSoFar = Array.isArray(filesChangedSoFar) ? [...filesChangedSoFar] : [];
 
     if (Array.isArray(history) && history.length > 0) {
-      // Continuing a previous round: append the tool results as a
-      // function-response turn, then ask the model to proceed.
       contents = [...history];
       if (Array.isArray(toolResults) && toolResults.length > 0) {
         contents.push({
@@ -182,48 +287,34 @@ router.post('/run', requireCliAuth, async (req, res) => {
         }
       }
     } else {
-      // First turn: seed the conversation with the pre-read project files.
       const safeFiles = Array.isArray(files) ? files : [];
       const fileBlock = safeFiles
         .map((f) => `--- ${f.path} ---\n${String(f.content).slice(0, MAX_FILE_CHARS)}`)
         .join('\n\n');
 
-      contents = [
-        {
-          role: 'user',
-          parts: [
-            {
-              text:
-                `Here are the contents of the project directory:\n\n${fileBlock || '(no files found)'}\n\n` +
-                `Task from the client: ${instruction}`,
-            },
-          ],
-        },
-      ];
+      contents = [{
+        role: 'user',
+        parts: [{
+          text:
+            `Here are the contents of the project directory:\n\n${fileBlock || '(no files found)'}\n\n` +
+            `Task from the client: ${instruction}`,
+        }],
+      }];
     }
 
-    const { result, modelUsed } = await generateWithRetry(employee, contents);
-    const response = result.response;
-
-    const functionCalls = typeof response.functionCalls === 'function' ? response.functionCalls() : null;
-
-    // Record the model's turn (including any function calls) in history so
-    // the next round can continue the conversation correctly.
-    const modelParts = response.candidates?.[0]?.content?.parts || [{ text: response.text() }];
+    const { functionCalls, message, modelParts, modelUsed } = await resolveAgentTurn(employee, contents);
     const updatedHistory = [...contents, { role: 'model', parts: modelParts }];
 
-    if (functionCalls && functionCalls.length > 0) {
+    if (functionCalls.length > 0) {
       return res.json({
         done: false,
-        toolCalls: functionCalls.map((fc) => ({ name: fc.name, args: fc.args })),
+        toolCalls: functionCalls,
         history: updatedHistory,
         filesChangedSoFar: changedSoFar,
         modelUsed,
       });
     }
 
-    // No function call — final text turn. Log the activity on the Hire doc.
-    const message = response.text();
     req.hire.activityLog.push({
       timestamp: new Date(),
       instruction,

@@ -39,11 +39,27 @@ router.post('/activate', async (req, res) => {
       return res.status(400).json({ error: 'cliToken is required' });
     }
 
-    const hire = await Hire.findOne({ cliToken, status: 'paid' });
+    const trimmed = String(cliToken).trim();
+
+    if (trimmed.length > 0 && trimmed.length < 40) {
+      return res.status(401).json({
+        error: 'Token looks truncated',
+        hint: 'CLI tokens are 48 characters long. Use the Copy button on My Agents — do not type it manually.',
+      });
+    }
+
+    const hire = await Hire.findOne({ cliToken: trimmed });
     if (!hire) {
       return res.status(401).json({
-        error: 'Invalid or unpaid token',
-        hint: 'Check the token from My Agents on the website, or complete payment first.',
+        error: 'Token not found',
+        hint: 'Hire an agent on the same site as your AGENTHIRE_API_URL, then copy the full token from My Agents.',
+      });
+    }
+
+    if (hire.status !== 'paid') {
+      return res.status(401).json({
+        error: 'Payment not completed',
+        hint: 'Finish payment on the website before connecting the CLI.',
       });
     }
 
